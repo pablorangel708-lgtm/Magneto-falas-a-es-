@@ -1,0 +1,620 @@
+--[[
+	═══════════════════════════════════════════════════════
+	MENU DE RP DO MAGNETO 🧲
+	LocalScript otimizado para celular
+
+	ONDE COLOCAR:
+	StarterPlayer > StarterPlayerScripts
+	(cole este script inteiro dentro de um novo LocalScript ali)
+	═══════════════════════════════════════════════════════
+]]
+
+-- ============================================================
+-- SERVIÇOS
+-- ============================================================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ============================================================
+-- CORES DO TEMA
+-- ============================================================
+local COR_FUNDO_PAINEL = Color3.fromRGB(20, 20, 24)
+local COR_FUNDO_HEADER = Color3.fromRGB(32, 14, 42)
+local COR_ACCENT = Color3.fromRGB(160, 50, 220)
+local COR_ACCENT_ESCURO = Color3.fromRGB(95, 28, 135)
+local COR_BOTAO = Color3.fromRGB(40, 40, 46)
+local COR_TEXTO = Color3.fromRGB(240, 240, 245)
+local COR_TEXTO_SECUNDARIO = Color3.fromRGB(170, 170, 180)
+local COR_PERIGO = Color3.fromRGB(150, 30, 40)
+
+-- ============================================================
+-- DECLARAÇÕES ANTECIPADAS (usadas por funções definidas antes da UI)
+-- ============================================================
+local statusLabel
+local campoNomePersonagem
+
+-- ============================================================
+-- SISTEMA DE ENVIO DE CHAT (detecção automática)
+-- ============================================================
+local canalGeral = nil
+local eventoChatLegado = nil
+local usarChatNovo = false
+
+pcall(function()
+	if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+		local canais = TextChatService:WaitForChild("TextChannels", 5)
+		if canais then
+			canalGeral = canais:WaitForChild("RBXGeneral", 5)
+		end
+		if canalGeral then
+			usarChatNovo = true
+		end
+	end
+end)
+
+if not usarChatNovo then
+	pcall(function()
+		local eventosChat = ReplicatedStorage:WaitForChild("DefaultChatSystemChatEvents", 5)
+		if eventosChat then
+			eventoChatLegado = eventosChat:WaitForChild("SayMessageRequest", 5)
+		end
+	end)
+end
+
+local function enviarMensagemChat(mensagem)
+	if usarChatNovo and canalGeral then
+		local ok = pcall(function()
+			canalGeral:SendAsync(mensagem)
+		end)
+		if ok then
+			return
+		end
+	end
+	if eventoChatLegado then
+		pcall(function()
+			eventoChatLegado:FireServer(mensagem, "All")
+		end)
+	end
+end
+
+-- ============================================================
+-- SISTEMA DE PAUSA DE 3 SEGUNDOS ENTRE MENSAGENS
+-- ============================================================
+local TEMPO_ESPERA = 3
+local podeEnviar = true
+
+local function atualizarStatus(texto, cor)
+	if statusLabel then
+		statusLabel.Text = texto
+		statusLabel.TextColor3 = cor
+	end
+end
+
+local function tentarEnviar(mensagem)
+	if not podeEnviar then
+		return false
+	end
+
+	podeEnviar = false
+	enviarMensagemChat(mensagem)
+
+	task.spawn(function()
+		local restante = TEMPO_ESPERA
+		while restante > 0 do
+			atualizarStatus("⏳ Aguarde " .. restante .. "s...", COR_PERIGO)
+			task.wait(1)
+			restante -= 1
+		end
+		podeEnviar = true
+		atualizarStatus("✅ Pronto para enviar", COR_ACCENT)
+	end)
+
+	return true
+end
+
+-- ============================================================
+-- SUBSTITUIÇÃO DO NOME DO PERSONAGEM
+-- ============================================================
+local function montarTexto(modelo, precisaNome)
+	if not precisaNome then
+		return modelo
+	end
+
+	local nome = ""
+	if campoNomePersonagem then
+		nome = campoNomePersonagem.Text
+	end
+
+	if nome == nil or nome:gsub("%s+", "") == "" then
+		nome = "{NOME_DO_PERSONAGEM}"
+	else
+		nome = nome:gsub("%%", "%%%%")
+	end
+
+	return modelo:gsub("{NOME_DO_PERSONAGEM}", nome)
+end
+
+-- ============================================================
+-- DADOS: FALAS, AÇÕES, PODERES E FINALIZAÇÕES
+-- ============================================================
+local PREFIXO_FALA = "———``"
+
+local FALAS = {
+	"Vocês realmente acreditam que podem me deter?",
+	"O metal responde à minha vontade.",
+	"Ajoelhem-se diante do poder dos mutantes.",
+	"Não me obriguem a mostrar do que sou capaz.",
+	"Humanos sempre temem aquilo que não conseguem controlar.",
+	"Eu não vim negociar.",
+	"Seu exército não significa nada contra mim.",
+	"O verdadeiro poder está nas minhas mãos.",
+	"Vocês não sabem com quem estão lidando.",
+	"Esta batalha termina agora.",
+}
+
+local ACOES = {
+	{ nome = "Rajada Magnética", texto = ". Magneto concentra energia magnética na mão e dispara uma poderosa rajada contra {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Prisão de Metal", texto = ". Magneto ergue correntes metálicas e prende {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Lança Metálica", texto = ". Magneto molda vários pedaços de metal em lanças e os dispara contra {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Escudo Magnético", texto = ". Magneto cria um enorme escudo magnético à sua frente .", precisaNome = false },
+	{ nome = "Tempestade de Metal", texto = ". Magneto levanta diversos objetos metálicos e os lança simultaneamente contra {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Arremesso", texto = ". Magneto usa seu poder para levantar {NOME_DO_PERSONAGEM} e arremessá-lo para longe .", precisaNome = true },
+	{ nome = "Armadura Metálica", texto = ". Magneto envolve seu corpo com placas metálicas, formando uma armadura .", precisaNome = false },
+	{ nome = "Pulso Magnético", texto = ". Magneto libera um pulso magnético que desativa os equipamentos próximos .", precisaNome = false },
+	{ nome = "Chuva de Metal", texto = ". Magneto faz dezenas de fragmentos metálicos caírem sobre {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Domínio Magnético", texto = ". Magneto estende os braços e faz todo o metal ao redor começar a flutuar .", precisaNome = false },
+}
+
+local PODERES = {
+	{ nome = "Magnetocinese", texto = ". Magneto controla os campos magnéticos ao seu redor .", precisaNome = false },
+	{ nome = "Manipulação de Metal", texto = ". Magneto movimenta e molda objetos metálicos com seus poderes .", precisaNome = false },
+	{ nome = "Voo", texto = ". Magneto se eleva do chão utilizando seu campo magnético .", precisaNome = false },
+	{ nome = "Escudo Magnético", texto = ". Magneto cria uma barreira magnética ao seu redor .", precisaNome = false },
+	{ nome = "Controle Eletromagnético", texto = ". Magneto interfere nos campos eletromagnéticos presentes ao seu redor .", precisaNome = false },
+	{ nome = "Percepção Eletromagnética", texto = ". Magneto sente as fontes eletromagnéticas presentes nas proximidades .", precisaNome = false },
+	{ nome = "Levitação Metálica", texto = ". Magneto faz diversos objetos metálicos flutuarem ao seu redor .", precisaNome = false },
+	{ nome = "Controle de Armaduras", texto = ". Magneto assume o controle de equipamentos e armaduras metálicas próximas .", precisaNome = false },
+}
+
+local ACABAR_COM_A_LUTA = {
+	{ nome = "Aprisionamento Total", texto = ". Magneto envolve {NOME_DO_PERSONAGEM} completamente com metal, impedindo seus movimentos .", precisaNome = true },
+	{ nome = "Colapso Metálico", texto = ". Magneto faz enormes estruturas metálicas desabarem ao redor de {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Pulso Supremo", texto = ". Magneto libera uma gigantesca onda magnética que derruba {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Campo Magnético Absoluto", texto = ". Magneto cria um campo magnético intenso que mantém {NOME_DO_PERSONAGEM} completamente imobilizado .", precisaNome = true },
+	{ nome = "Golpe Final", texto = ". Magneto reúne todo o metal ao redor e desfere um ataque concentrado contra {NOME_DO_PERSONAGEM} .", precisaNome = true },
+	{ nome = "Domínio Completo", texto = ". Magneto ergue {NOME_DO_PERSONAGEM} do chão e o mantém suspenso enquanto controla todo o metal ao redor .", precisaNome = true },
+	{ nome = "Fim da Batalha", texto = ". Magneto fecha o punho, fazendo as armas e equipamentos de {NOME_DO_PERSONAGEM} se despedaçarem antes de derrubá-lo .", precisaNome = true },
+}
+
+-- ============================================================
+-- INTERFACE — CRIAÇÃO DOS ELEMENTOS
+-- ============================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MagnetoRPMenu"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 100
+screenGui.Parent = playerGui
+
+-- BOTÃO FLUTUANTE
+local botaoFlutuante = Instance.new("TextButton")
+botaoFlutuante.Name = "BotaoFlutuante"
+botaoFlutuante.Size = UDim2.new(0, 60, 0, 60)
+botaoFlutuante.AnchorPoint = Vector2.new(1, 0.5)
+botaoFlutuante.Position = UDim2.new(1, -14, 0.55, 0)
+botaoFlutuante.BackgroundColor3 = COR_ACCENT
+botaoFlutuante.Text = "🧲"
+botaoFlutuante.TextScaled = true
+botaoFlutuante.Font = Enum.Font.GothamBold
+botaoFlutuante.TextColor3 = Color3.fromRGB(255, 255, 255)
+botaoFlutuante.ZIndex = 10
+botaoFlutuante.Parent = screenGui
+
+local cornerBotao = Instance.new("UICorner")
+cornerBotao.CornerRadius = UDim.new(1, 0)
+cornerBotao.Parent = botaoFlutuante
+
+local strokeBotao = Instance.new("UIStroke")
+strokeBotao.Color = Color3.fromRGB(255, 255, 255)
+strokeBotao.Thickness = 2
+strokeBotao.Transparency = 0.6
+strokeBotao.Parent = botaoFlutuante
+
+-- PAINEL PRINCIPAL
+local painel = Instance.new("Frame")
+painel.Name = "Painel"
+painel.Size = UDim2.new(0.9, 0, 0.78, 0)
+painel.AnchorPoint = Vector2.new(0.5, 0.5)
+painel.Position = UDim2.new(0.5, 0, 0.5, 0)
+painel.BackgroundColor3 = COR_FUNDO_PAINEL
+painel.Visible = false
+painel.ZIndex = 5
+painel.Parent = screenGui
+
+local cornerPainel = Instance.new("UICorner")
+cornerPainel.CornerRadius = UDim.new(0, 14)
+cornerPainel.Parent = painel
+
+local strokePainel = Instance.new("UIStroke")
+strokePainel.Color = COR_ACCENT
+strokePainel.Thickness = 1.5
+strokePainel.Transparency = 0.3
+strokePainel.Parent = painel
+
+-- CABEÇALHO (arrastável)
+local cabecalho = Instance.new("Frame")
+cabecalho.Name = "Cabecalho"
+cabecalho.Size = UDim2.new(1, 0, 0, 46)
+cabecalho.BackgroundColor3 = COR_FUNDO_HEADER
+cabecalho.ZIndex = 6
+cabecalho.Parent = painel
+
+local cornerCabecalho = Instance.new("UICorner")
+cornerCabecalho.CornerRadius = UDim.new(0, 14)
+cornerCabecalho.Parent = cabecalho
+
+local mascaraCabecalho = Instance.new("Frame")
+mascaraCabecalho.Size = UDim2.new(1, 0, 0, 14)
+mascaraCabecalho.Position = UDim2.new(0, 0, 1, -14)
+mascaraCabecalho.BackgroundColor3 = COR_FUNDO_HEADER
+mascaraCabecalho.BorderSizePixel = 0
+mascaraCabecalho.ZIndex = 6
+mascaraCabecalho.Parent = cabecalho
+
+local tituloPainel = Instance.new("TextLabel")
+tituloPainel.Size = UDim2.new(1, -56, 1, 0)
+tituloPainel.Position = UDim2.new(0, 14, 0, 0)
+tituloPainel.BackgroundTransparency = 1
+tituloPainel.Text = "🧲 Magneto — Menu RP"
+tituloPainel.Font = Enum.Font.GothamBold
+tituloPainel.TextSize = 18
+tituloPainel.TextColor3 = COR_TEXTO
+tituloPainel.TextXAlignment = Enum.TextXAlignment.Left
+tituloPainel.ZIndex = 7
+tituloPainel.Parent = cabecalho
+
+local botaoFechar = Instance.new("TextButton")
+botaoFechar.Size = UDim2.new(0, 34, 0, 34)
+botaoFechar.AnchorPoint = Vector2.new(0, 0.5)
+botaoFechar.Position = UDim2.new(1, -44, 0.5, 0)
+botaoFechar.BackgroundColor3 = COR_PERIGO
+botaoFechar.Text = "✕"
+botaoFechar.TextScaled = true
+botaoFechar.Font = Enum.Font.GothamBold
+botaoFechar.TextColor3 = Color3.fromRGB(255, 255, 255)
+botaoFechar.ZIndex = 7
+botaoFechar.Parent = cabecalho
+
+local cornerFechar = Instance.new("UICorner")
+cornerFechar.CornerRadius = UDim.new(1, 0)
+cornerFechar.Parent = botaoFechar
+
+-- ÁREA DE ROLAGEM
+local scrollFrame = Instance.new("ScrollingFrame")
+scrollFrame.Name = "Conteudo"
+scrollFrame.Size = UDim2.new(1, -16, 1, -92)
+scrollFrame.Position = UDim2.new(0, 8, 0, 54)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 5
+scrollFrame.ScrollBarImageColor3 = COR_ACCENT
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.ZIndex = 6
+scrollFrame.Parent = painel
+
+local layoutConteudo = Instance.new("UIListLayout")
+layoutConteudo.Padding = UDim.new(0, 8)
+layoutConteudo.SortOrder = Enum.SortOrder.LayoutOrder
+layoutConteudo.Parent = scrollFrame
+
+local paddingConteudo = Instance.new("UIPadding")
+paddingConteudo.PaddingTop = UDim.new(0, 4)
+paddingConteudo.PaddingBottom = UDim.new(0, 8)
+paddingConteudo.Parent = scrollFrame
+
+-- BARRA DE STATUS (indicador da pausa de 3 segundos)
+statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "StatusLabel"
+statusLabel.Size = UDim2.new(1, -16, 0, 30)
+statusLabel.Position = UDim2.new(0, 8, 1, -38)
+statusLabel.BackgroundColor3 = COR_FUNDO_HEADER
+statusLabel.Text = "✅ Pronto para enviar"
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 14
+statusLabel.TextColor3 = COR_ACCENT
+statusLabel.ZIndex = 6
+statusLabel.Parent = painel
+
+local cornerStatus = Instance.new("UICorner")
+cornerStatus.CornerRadius = UDim.new(0, 8)
+cornerStatus.Parent = statusLabel
+
+-- ============================================================
+-- FUNÇÃO DE ARRASTAR (mouse e toque)
+-- ============================================================
+local function tornarArrastavel(alvo, alcaArrasto)
+	alcaArrasto = alcaArrasto or alvo
+	local arrastando = false
+	local entradaArrasto
+	local entradaInicial
+	local posicaoInicial
+	local moveu = false
+
+	local function atualizarPosicao(entrada)
+		local delta = entrada.Position - entradaInicial
+		if math.abs(delta.X) > 3 or math.abs(delta.Y) > 3 then
+			moveu = true
+		end
+		alvo.Position = UDim2.new(
+			posicaoInicial.X.Scale,
+			posicaoInicial.X.Offset + delta.X,
+			posicaoInicial.Y.Scale,
+			posicaoInicial.Y.Offset + delta.Y
+		)
+	end
+
+	alcaArrasto.InputBegan:Connect(function(entrada)
+		if entrada.UserInputType == Enum.UserInputType.MouseButton1 or entrada.UserInputType == Enum.UserInputType.Touch then
+			arrastando = true
+			moveu = false
+			entradaInicial = entrada.Position
+			posicaoInicial = alvo.Position
+
+			entrada.Changed:Connect(function()
+				if entrada.UserInputState == Enum.UserInputState.End and arrastando then
+					arrastando = false
+				end
+			end)
+		end
+	end)
+
+	alcaArrasto.InputChanged:Connect(function(entrada)
+		if entrada.UserInputType == Enum.UserInputType.MouseMovement or entrada.UserInputType == Enum.UserInputType.Touch then
+			entradaArrasto = entrada
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(entrada)
+		if arrastando and entrada == entradaArrasto then
+			atualizarPosicao(entrada)
+		end
+	end)
+
+	return function()
+		return moveu
+	end
+end
+
+-- ============================================================
+-- ABRIR / FECHAR PAINEL
+-- ============================================================
+local painelAberto = false
+local tamanhoFinalPainel = painel.Size
+
+local function abrirPainel()
+	painel.Visible = true
+	painel.Size = UDim2.new(
+		tamanhoFinalPainel.X.Scale * 0.85, 0,
+		tamanhoFinalPainel.Y.Scale * 0.85, 0
+	)
+	local tween = TweenService:Create(
+		painel,
+		TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Size = tamanhoFinalPainel }
+	)
+	tween:Play()
+	painelAberto = true
+end
+
+local function fecharPainel()
+	local tween = TweenService:Create(
+		painel,
+		TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Size = UDim2.new(
+			tamanhoFinalPainel.X.Scale * 0.85, 0,
+			tamanhoFinalPainel.Y.Scale * 0.85, 0
+		) }
+	)
+	tween:Play()
+	tween.Completed:Connect(function()
+		if not painelAberto then
+			painel.Visible = false
+			painel.Size = tamanhoFinalPainel
+		end
+	end)
+	painelAberto = false
+end
+
+local function alternarPainel()
+	if painelAberto then
+		fecharPainel()
+	else
+		abrirPainel()
+	end
+end
+
+local foiArrastadoBotao = tornarArrastavel(botaoFlutuante)
+
+botaoFlutuante.Activated:Connect(function()
+	if not foiArrastadoBotao() then
+		alternarPainel()
+	end
+end)
+
+tornarArrastavel(painel, cabecalho)
+
+botaoFechar.Activated:Connect(function()
+	fecharPainel()
+end)
+
+-- ============================================================
+-- FUNÇÕES AUXILIARES PARA CONSTRUIR A LISTA DE CATEGORIAS
+-- ============================================================
+local proximoLayoutOrder = 0
+local function novoLayoutOrder()
+	proximoLayoutOrder = proximoLayoutOrder + 1
+	return proximoLayoutOrder
+end
+
+local function criarCabecalhoCategoria(texto)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 28)
+	label.BackgroundTransparency = 1
+	label.Text = texto
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 16
+	label.TextColor3 = COR_ACCENT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.LayoutOrder = novoLayoutOrder()
+	label.ZIndex = 6
+	label.Parent = scrollFrame
+	return label
+end
+
+local function criarLabelSecundario(texto)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 20)
+	label.BackgroundTransparency = 1
+	label.Text = texto
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 13
+	label.TextColor3 = COR_TEXTO_SECUNDARIO
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+	label.LayoutOrder = novoLayoutOrder()
+	label.ZIndex = 6
+	label.Parent = scrollFrame
+	return label
+end
+
+local function criarCaixaTexto(placeholder)
+	local caixa = Instance.new("TextBox")
+	caixa.Size = UDim2.new(1, 0, 0, 42)
+	caixa.BackgroundColor3 = COR_BOTAO
+	caixa.PlaceholderText = placeholder
+	caixa.Text = ""
+	caixa.Font = Enum.Font.Gotham
+	caixa.TextSize = 15
+	caixa.TextColor3 = COR_TEXTO
+	caixa.PlaceholderColor3 = COR_TEXTO_SECUNDARIO
+	caixa.ClearTextOnFocus = false
+	caixa.LayoutOrder = novoLayoutOrder()
+	caixa.ZIndex = 6
+	caixa.Parent = scrollFrame
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = caixa
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 10)
+	padding.Parent = caixa
+
+	return caixa
+end
+
+local function criarBotao(texto, aoClicar, corFundo)
+	local botao = Instance.new("TextButton")
+	botao.Size = UDim2.new(1, 0, 0, 0)
+	botao.AutomaticSize = Enum.AutomaticSize.Y
+	botao.BackgroundColor3 = corFundo or COR_BOTAO
+	botao.Text = texto
+	botao.TextWrapped = true
+	botao.Font = Enum.Font.Gotham
+	botao.TextSize = 15
+	botao.TextColor3 = COR_TEXTO
+	botao.LayoutOrder = novoLayoutOrder()
+	botao.ZIndex = 6
+	botao.Parent = scrollFrame
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = botao
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 12)
+	padding.PaddingBottom = UDim.new(0, 12)
+	padding.PaddingLeft = UDim.new(0, 12)
+	padding.PaddingRight = UDim.new(0, 12)
+	padding.Parent = botao
+
+	botao.Activated:Connect(aoClicar)
+
+	return botao
+end
+
+-- ============================================================
+-- CATEGORIA: 🗣️ FALAS
+-- ============================================================
+criarCabecalhoCategoria("🗣️ FALAS")
+
+for _, fala in ipairs(FALAS) do
+	criarBotao(fala, function()
+		tentarEnviar(PREFIXO_FALA .. fala)
+	end)
+end
+
+-- ============================================================
+-- CATEGORIA: 💬 FALA PERSONALIZADA
+-- ============================================================
+criarCabecalhoCategoria("💬 FALA PERSONALIZADA")
+
+local campoFalaPersonalizada = criarCaixaTexto("Digite sua fala...")
+
+criarBotao("📨 ENVIAR", function()
+	local texto = campoFalaPersonalizada.Text
+	if texto == nil or texto:gsub("%s+", "") == "" then
+		return
+	end
+	local mensagem = PREFIXO_FALA .. texto
+	if tentarEnviar(mensagem) then
+		campoFalaPersonalizada.Text = ""
+	end
+end, COR_ACCENT_ESCURO)
+
+-- ============================================================
+-- CATEGORIA: ⚔️ AÇÕES / ATAQUES
+-- ============================================================
+criarCabecalhoCategoria("⚔️ AÇÕES / ATAQUES")
+criarLabelSecundario("Preencha o nome abaixo para ações que mencionam outro personagem:")
+
+campoNomePersonagem = criarCaixaTexto("Nome do personagem")
+
+for _, acao in ipairs(ACOES) do
+	criarBotao(acao.nome, function()
+		local mensagem = montarTexto(acao.texto, acao.precisaNome)
+		tentarEnviar(mensagem)
+	end)
+end
+
+-- ============================================================
+-- CATEGORIA: 🧲 PODERES
+-- ============================================================
+criarCabecalhoCategoria("🧲 PODERES")
+
+for _, poder in ipairs(PODERES) do
+	criarBotao(poder.nome, function()
+		local mensagem = montarTexto(poder.texto, poder.precisaNome)
+		tentarEnviar(mensagem)
+	end)
+end
+
+-- ============================================================
+-- CATEGORIA: ☠️ ACABAR COM A LUTA
+-- ============================================================
+criarCabecalhoCategoria("☠️ ACABAR COM A LUTA")
+criarLabelSecundario("Usa o mesmo campo \"Nome do personagem\" da categoria Ações:")
+
+for _, finalizacao in ipairs(ACABAR_COM_A_LUTA) do
+	criarBotao(finalizacao.nome, function()
+		local mensagem = montarTexto(finalizacao.texto, finalizacao.precisaNome)
+		tentarEnviar(mensagem)
+	end, COR_PERIGO)
+end
